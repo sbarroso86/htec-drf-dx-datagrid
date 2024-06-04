@@ -1,0 +1,2 @@
+class HtecDrfDxDatagridException(Exception):
+    pass

@@ -1,4 +1,4 @@
-# drf-dx-datagrid
+# htec-drf-dx-datagrid
 # Overview
 This package provides easy integration between [Django REST framework](https://www.django-rest-framework.org) and [DevExtreme Data Grid](https://js.devexpress.com/Demos/WidgetsGallery/Demo/DataGrid/Overview/jQuery/Light/).
 It handles grouping, paging, filtering, aggregating and ordering on serverside.
@@ -10,13 +10,25 @@ All you need is to replace classname "ModelViewSet" with "DxModelViewSet" in you
 #Installation
 pip install drf-dx-datagrid
 # Configuration
-Define your ViewSet classes:
+Define your ModelViewSet class inherits from DxModelViewSet:
+
 ```python
-from drf_dx_datagrid import DxModelViewSet
+from htec_drf_dx_datagrid import DxModelViewSet
+
 
 class MyModelViewSet(DxModelViewSet):
     serializer_class = MyModelSerializer
-    queryset = core.models.MyModel.objects.all()
+    queryset = MyModel.objects.all()
+```
+Also you can define ReadOnlyModelViewSet inherits from DxReadOnlyModelViewSet
+
+```python
+from htec_drf_dx_datagrid import DxModelViewSet
+
+
+class MyReadOnlyModelViewSet(DxReadOnlyModelViewSet):
+    serializer_class = MyModelSerializer
+    queryset = MyModel.objects.all()
 ```
 Example for React.js:
 ```jsx

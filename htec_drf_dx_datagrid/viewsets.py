@@ -30,7 +30,7 @@ def format_items(lvl_dict, lvl_items):
             format_items(key_dict["items"], item["items"])
 
 
-class DxModelViewSet(rest_framework.viewsets.ModelViewSet, DxMixin, SummaryMixin):
+class DxListModelMixin(rest_framework.mixins.ListModelMixin, DxMixin, SummaryMixin):
     pagination_class = TakeSkipPagination
     filter_backends = [DxFilterBackend, *rest_framework.viewsets.ModelViewSet.filter_backends]
 
@@ -117,3 +117,27 @@ class DxModelViewSet(rest_framework.viewsets.ModelViewSet, DxMixin, SummaryMixin
             return group["selector"].replace(".", "__") + "__" + group["groupInterval"]
         else:
             return group["selector"].replace(".", "__")
+
+
+class DxReadOnlyModelViewSet(rest_framework.mixins.RetrieveModelMixin,
+                             DxListModelMixin,
+                             rest_framework.viewsets.GenericViewSet):
+    """
+    A viewset that provides default `list()` and `retrieve()` actions.
+    That support DX Extreme Datagrid filters and actions
+    """
+    pass
+
+
+class DxModelViewSet(rest_framework.mixins.CreateModelMixin,
+                     rest_framework.mixins.RetrieveModelMixin,
+                     rest_framework.mixins.UpdateModelMixin,
+                     rest_framework.mixins.DestroyModelMixin,
+                     DxListModelMixin,
+                     rest_framework.viewsets.GenericViewSet):
+    """
+    A viewset that provides default `create()`, `retrieve()`, `update()`,
+    `partial_update()`, `destroy()` and `list()` actions.
+    That support DX Extreme Datagrid filters and actions
+    """
+    pass

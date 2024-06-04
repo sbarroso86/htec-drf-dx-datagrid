@@ -4,10 +4,10 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(
-    name='drf_dx_datagrid',
-    version='0.4.2',
+    name='htec_drf_dx_datagrid',
+    version='0.4.3',
     packages=find_packages(),
-    url='https://github.com/SergeyMatveev88/drf-dx-datagrid',
+    url='https://github.com/sbarroso86/htec-drf-dx-datagrid',
     license='MIT',
     author='SergeyMatveev88',
     author_email='dazranagon@yandex.ru',
