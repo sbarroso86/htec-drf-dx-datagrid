@@ -120,7 +120,7 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
                 res_queryset = res_queryset.filter(q_expr)
         sort = self.get_param_from_request(request, "sort")
         if sort:
-            ordering = self.get_ordering(sort)
+            ordering = self.get_ordering(self.serializer, sort)
             if ordering:
                 res_queryset = res_queryset.order_by(*ordering)
         return res_queryset
