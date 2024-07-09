@@ -1,7 +1,7 @@
 import ast
 
 from django.db.models import Q
-from rest_framework import filters
+from rest_framework import filters, fields
 
 from .exceptions import HtecDrfDxDatagridException
 from .mixins import DxMixin
@@ -11,8 +11,10 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
 
     def __init__(self):
         self.is_case_sensitive = self.get_case_sensitive()
+        self.serializer = None
 
-    def __is_node(self, dx_filter: list):
+    @staticmethod
+    def is_node(dx_filter: list):
         """
         Dev extreme datagrid the filter node is [field_name, operator, value]
         :param dx_filter: List with dev extreme datagrid filter
@@ -23,13 +25,13 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
                 return False
         return True
 
-    def __to_django_operator(self, operator: str, value):
+    def _to_django_operator(self, operator: str, value, is_char_field):
         if operator == "notcontains":
-            return "__icontains" if self.is_case_sensitive else "__contains"
+            return "__contains" if self.is_case_sensitive else "__icontains"
         if operator == "<>":
             return ""
         if operator == "=":
-            if isinstance(value, str):
+            if isinstance(value, str) and is_char_field:
                 return "__exact" if self.is_case_sensitive else "__iexact"
             return ""
         if operator == ">":
@@ -42,7 +44,8 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
             return "__lte"
         return "__" + operator if self.is_case_sensitive else "__i" + operator
 
-    def _check_value(self, value):
+    @staticmethod
+    def _check_value(value):
         """
         Check value is correct format for queryset
         FYI: In number fields django support filter doesn't matter if it is string
@@ -59,6 +62,10 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
             pass
         return value
 
+    def is_char_field(self, field_name):
+        field = self.serializer.fields.get(field_name)
+        return isinstance(field, fields.CharField)
+
     def __node_to_q(self, node: list):
         """
         Generate Query for Node filter
@@ -66,21 +73,20 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
                     [field_name, operator, value]
         :return: Query
         """
-        # PDTE: Implementación de recuperar el nombre a partir del source
-        field_name = node[0].replace(".", "__")
+        field_name = self.get_field_name_from_source(self.serializer, node[0])
+        is_char_field = self.is_char_field(node[0])
         value = self._check_value(node[2])
-        operator = self.__to_django_operator(node[1], value)
-        is_negative = (operator == "<>" or operator == "notcontains")
+        is_negative = node[1] == "<>" or node[1] == "notcontains"
+        operator = self._to_django_operator(node[1], value, is_char_field)
 
-        q_expr = Q(**{field_name+operator: value})
+        q_expr = Q(**{field_name + operator: value})
 
         return ~q_expr if is_negative else q_expr
-
 
     def __generate_q_expr(self, dx_filter):
         if dx_filter is None or not dx_filter:
             return None
-        if self.__is_node(dx_filter):
+        if self._is_node(dx_filter):
             return self.__node_to_q(dx_filter)
         else:
             q_elems = []
@@ -105,6 +111,7 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
             return q_expr
 
     def filter_queryset(self, request, queryset, view):
+        self.serializer = view.get_serializer()
         res_queryset = queryset
         dx_filter = self.get_param_from_request(request, "filter")
         if dx_filter:
@@ -120,7 +127,8 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
 
     def get_case_sensitive(self):
         from django.conf import settings
+
         try:
-            return settings.REST_FRAMEWORK['DRF_DX_DATAGRID']['FILTER_CASE_SENSITIVE']
+            return settings.REST_FRAMEWORK["DRF_DX_DATAGRID"]["FILTER_CASE_SENSITIVE"]
         except (AttributeError, KeyError):
             return True

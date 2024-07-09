@@ -5,7 +5,6 @@ from django.db.models import Count
 from rest_framework.response import Response
 
 from .filters import DxFilterBackend
-from .mixins import DxMixin
 from .pagination import TakeSkipPagination
 from .summary import SummaryMixin
 
@@ -30,17 +29,20 @@ def format_items(lvl_dict, lvl_items):
             format_items(key_dict["items"], item["items"])
 
 
-class DxListModelMixin(rest_framework.mixins.ListModelMixin, DxMixin, SummaryMixin):
+class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
     pagination_class = TakeSkipPagination
-    filter_backends = [DxFilterBackend, *rest_framework.viewsets.ModelViewSet.filter_backends]
+    filter_backends = [
+        DxFilterBackend,
+        *rest_framework.viewsets.ModelViewSet.filter_backends,
+    ]
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         group = self.get_param_from_request(request, "group")
-        if group is None:
-            return self._not_grouped_list(queryset, request)
-        else:
+        if group:
             return self._grouped_list(group, queryset, request)
+        else:
+            return self._not_grouped_list(queryset, request)
 
     def _grouped_list(self, groups, queryset, request):
         require_group_count = self.get_param_from_request(request, "requireGroupCount")
@@ -50,12 +52,18 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, DxMixin, SummaryMix
             groups = [groups]
 
         group_field_names = {self.get_group_field_name(group) for group in groups}
-        ordering = self.get_ordering(groups)
-        group_queryset = queryset.values(*group_field_names).annotate(count=Count("pk")).order_by(*ordering).distinct()
+        ordering = self.get_ordering(self.get_serializer(), groups)
+        group_queryset = (
+            queryset.values(*group_field_names)
+            .annotate(count=Count("pk"))
+            .order_by(*ordering)
+            .distinct()
+        )
         group_summary = self.get_param_from_request(request, "groupSummary")
-        if group_summary is not None and group_summary:
-            group_summary_list = group_summary if isinstance(group_summary, list) else [group_summary]
-            group_queryset = self.add_summary_annotate(group_queryset, group_summary_list)
+        if group_summary:
+            if not isinstance(group_summary, list):
+                group_summary = [group_summary]
+            group_queryset = self.add_summary_annotate(group_queryset, group_summary)
 
         page = self.paginate_queryset(group_queryset)
         res_dict = {}
@@ -64,9 +72,9 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, DxMixin, SummaryMix
         if require_total_count:
             res_dict["totalCount"] = queryset.count()
 
-        rs = page if page is not None else group_queryset
+        result = page if page else group_queryset
         data_dict = {}
-        for row in rs:
+        for row in result:
             lvl_dict = data_dict
             for group in groups:
                 group_field_name = self.get_group_field_name(group)
@@ -86,7 +94,9 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, DxMixin, SummaryMix
                     key_dict["items"] = None
                     key_dict["count"] = row["count"]
 
-                    summary_pairs = list(filter(lambda x: x[0].startswith("gs__"), row.items()))
+                    summary_pairs = list(
+                        filter(lambda x: x[0].startswith("gs__"), row.items())
+                    )
                     if summary_pairs:
                         summary_pairs.sort(key=lambda x: x[0])
                         summary = [x[1] for x in summary_pairs]
@@ -100,44 +110,53 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, DxMixin, SummaryMix
     def _not_grouped_list(self, queryset, request):
         res_dict = OrderedDict()
         page = self.paginate_queryset(queryset)
-        if page is not None:
+        if page is None:
+            serializer = self.get_serializer(queryset, many=True)
+        else:
             serializer = self.get_serializer(page, many=True)
             res_dict["totalCount"] = self.paginator.count
-        else:
-            serializer = self.get_serializer(queryset, many=True)
         total_summary = self.get_param_from_request(request, "totalSummary")
         if total_summary is not None and total_summary:
-            total_summary_list = total_summary if isinstance(total_summary, list) else [total_summary]
-            res_dict["summary"] = self.calc_total_summary(queryset, total_summary_list)
+            if not isinstance(total_summary, list):
+                total_summary = [total_summary]
+            res_dict["summary"] = self.calc_total_summary(queryset, total_summary)
         res_dict["data"] = serializer.data
         return Response(res_dict)
 
-    def get_group_field_name(self, group):
+    def get_group_field_name(self, group: dict):
+        field_name = self.get_field_name_from_source(
+            self.get_serializer(), group["selector"]
+        )
         if "groupInterval" in group:
-            return group["selector"].replace(".", "__") + "__" + group["groupInterval"]
-        else:
-            return group["selector"].replace(".", "__")
+            field_name += "__" + group["groupInterval"]
+        return field_name
 
 
-class DxReadOnlyModelViewSet(rest_framework.mixins.RetrieveModelMixin,
-                             DxListModelMixin,
-                             rest_framework.viewsets.GenericViewSet):
+class DxReadOnlyModelViewSet(
+    rest_framework.mixins.RetrieveModelMixin,
+    DxListModelMixin,
+    rest_framework.viewsets.GenericViewSet,
+):
     """
     A viewset that provides default `list()` and `retrieve()` actions.
     That support DX Extreme Datagrid filters and actions
     """
+
     pass
 
 
-class DxModelViewSet(rest_framework.mixins.CreateModelMixin,
-                     rest_framework.mixins.RetrieveModelMixin,
-                     rest_framework.mixins.UpdateModelMixin,
-                     rest_framework.mixins.DestroyModelMixin,
-                     DxListModelMixin,
-                     rest_framework.viewsets.GenericViewSet):
+class DxModelViewSet(
+    rest_framework.mixins.CreateModelMixin,
+    rest_framework.mixins.RetrieveModelMixin,
+    rest_framework.mixins.UpdateModelMixin,
+    rest_framework.mixins.DestroyModelMixin,
+    DxListModelMixin,
+    rest_framework.viewsets.GenericViewSet,
+):
     """
     A viewset that provides default `create()`, `retrieve()`, `update()`,
     `partial_update()`, `destroy()` and `list()` actions.
     That support DX Extreme Datagrid filters and actions
     """
+
     pass
