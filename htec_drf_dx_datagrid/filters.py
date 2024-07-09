@@ -14,7 +14,7 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
         self.serializer = None
 
     @staticmethod
-    def is_node(dx_filter: list):
+    def _is_node(dx_filter: list):
         """
         Dev extreme datagrid the filter node is [field_name, operator, value]
         :param dx_filter: List with dev extreme datagrid filter
