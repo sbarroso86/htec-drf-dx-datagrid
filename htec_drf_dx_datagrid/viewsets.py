@@ -1,7 +1,9 @@
+import logging
 from collections import OrderedDict
 
 import rest_framework.viewsets
 from django.db.models import Count
+from rest_framework import serializers
 from rest_framework.response import Response
 
 from .filters import DxFilterBackend
@@ -36,7 +38,48 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
         *rest_framework.viewsets.ModelViewSet.filter_backends,
     ]
 
+    @staticmethod
+    def get_field_type(field):
+        if (
+            isinstance(field, (serializers.Serializer, serializers.JSONField))
+            or hasattr(field, "many")
+            and field.many
+        ):
+            return "object"
+        elif isinstance(
+            field,
+            (
+                serializers.IntegerField,
+                serializers.DecimalField,
+                serializers.FloatField,
+            ),
+        ):
+            return "number"
+        elif isinstance(field, (serializers.DateField, serializers.DateTimeField)):
+            return "date"
+        return "string"
+
+    def _field_type_list(self):
+        """
+        Get field types from serializer class
+        :return: Dict {field_name: field_type as string}
+                Types: 'object', 'number', 'date', 'string'
+        """
+        result = {}
+        try:
+            fields = self.get_serializer().fields
+            for field_name, field in fields.items():
+                result[field_name] = self.get_field_type(field)
+        except Exception as e:
+            logging.exception(e)
+        finally:
+            return Response(result)
+
     def list(self, request, *args, **kwargs):
+        list_type = self.request.query_params.get("list_types", "False").lower()
+        if list_type == "true":
+            return self._field_type_list()
+
         queryset = self.filter_queryset(self.get_queryset())
         group = self.get_param_from_request(request, "group")
         if group:
