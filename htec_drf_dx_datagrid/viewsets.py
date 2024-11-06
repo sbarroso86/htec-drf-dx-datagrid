@@ -72,8 +72,7 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
                 result[field_name] = self.get_field_type(field)
         except Exception as e:
             logging.exception(e)
-        finally:
-            return Response(result)
+        return Response(result)
 
     def list(self, request, *args, **kwargs):
         """
@@ -130,6 +129,14 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
             res_dict["totalCount"] = queryset.count()
 
         result = page if page else group_queryset
+        data_dict = self.build_data_dict(groups, result)
+
+        res_dict["data"] = []
+        format_items(data_dict, res_dict["data"])
+
+        return Response(res_dict)
+
+    def build_data_dict(self, groups, result):
         data_dict = {}
         for row in result:
             lvl_dict = data_dict
@@ -167,11 +174,7 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
                         summary_pairs.sort(key=lambda x: x[0])
                         summary = [x[1] for x in summary_pairs]
                         key_dict["summary"] = summary
-
-        res_dict["data"] = []
-        format_items(data_dict, res_dict["data"])
-
-        return Response(res_dict)
+        return data_dict
 
     def _not_grouped_list(self, queryset, request):
         res_dict = OrderedDict()
