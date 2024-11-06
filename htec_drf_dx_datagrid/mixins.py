@@ -4,6 +4,12 @@ from rest_framework import serializers
 
 
 class DxMixin(object):
+    FILTER = "filter"
+    SORT = "sort"
+    GROUP_SUMMARY = "groupSummary"
+    TOTAL_SUMMARY = "totalSummary"
+    GROUP = "group"
+    DX_PARAMS = [FILTER, SORT, GROUP_SUMMARY, TOTAL_SUMMARY, GROUP]
 
     @staticmethod
     def get_param_from_request(request, param_name):
@@ -15,10 +21,11 @@ class DxMixin(object):
             return json_object
 
         param_list = []
-        if param_name in request.query_params:
-            param_list = request.query_params.getlist(param_name)
-        elif param_name + "[]" in request.query_params:
-            param_list = request.query_params.getlist(param_name + "[]")
+        # Read from GET because sometimes you could be need modify something in query_params
+        if param_name in request.GET:
+            param_list = request.GET.getlist(param_name)
+        elif param_name + "[]" in request.GET:
+            param_list = request.GET.getlist(param_name + "[]")
 
         param_list = [json_loads(x, x) for x in param_list]
         if len(param_list) == 1:
@@ -28,21 +35,19 @@ class DxMixin(object):
 
         return request.data.get(param_name)
 
-    @classmethod
-    def get_ordering(cls, serializer, dx_sort_list):
+    def get_ordering(self, serializer, dx_sort_list):
         result = []
         if dx_sort_list is None:
             return result
         if isinstance(dx_sort_list, dict):
             dx_sort_list = [dx_sort_list]
         for param in dx_sort_list:
-            field_name = cls.get_field_name_from_source(serializer, param["selector"])
+            field_name = self.get_field_name_from_source(serializer, param["selector"])
             desc = "-" if "desc" in param and param["desc"] else ""
             result.append(desc + field_name)
         return result
 
-    @staticmethod
-    def get_field_name_from_source(serializer, f_name):
+    def get_field_name_from_source(self, serializer, f_name):
         """
         Get the field name needed in query from source of serializer
         """

@@ -26,6 +26,8 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
         return True
 
     def _to_django_operator(self, operator: str, value, is_char_field):
+        if value is None:
+            return "__isnull"
         if operator == "notcontains":
             return "__contains" if self.is_case_sensitive else "__icontains"
         if operator == "<>":
@@ -53,13 +55,16 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
         :param value: value from request
         :return: value to queryset
         """
-        try:
-            if type(value) is str:
+        if type(value) is str:
+            # Convert value necessary in queryset
+            if value.lower() == "true" or value.lower() == "false":
+                return value.lower() == "true"
+            try:
                 aux_value = ast.literal_eval(value)
                 if type(aux_value) is list:
                     return aux_value
-        except (ValueError, SyntaxError):
-            pass
+            except (ValueError, SyntaxError):
+                pass
         return value
 
     def is_char_field(self, field_name):
@@ -78,7 +83,8 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
         value = self._check_value(node[2])
         is_negative = node[1] == "<>" or node[1] == "notcontains"
         operator = self._to_django_operator(node[1], value, is_char_field)
-
+        if value is None:  # Because we will use __isnull=True
+            value = True
         q_expr = Q(**{field_name + operator: value})
 
         return ~q_expr if is_negative else q_expr
@@ -113,12 +119,12 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
     def filter_queryset(self, request, queryset, view):
         self.serializer = view.get_serializer()
         res_queryset = queryset
-        dx_filter = self.get_param_from_request(request, "filter")
+        dx_filter = self.get_param_from_request(request, self.FILTER)
         if dx_filter:
             q_expr = self.__generate_q_expr(dx_filter)
             if q_expr is not None:
                 res_queryset = res_queryset.filter(q_expr)
-        sort = self.get_param_from_request(request, "sort")
+        sort = self.get_param_from_request(request, self.SORT)
         if sort:
             ordering = self.get_ordering(self.serializer, sort)
             if ordering:

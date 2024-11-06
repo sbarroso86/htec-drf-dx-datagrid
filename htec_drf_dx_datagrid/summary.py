@@ -23,6 +23,10 @@ class SummaryMixin(DxMixin):
             raise ValidationError(detail=f"Unsupported summary type '{function_name}'")
 
     def calc_total_summary(self, queryset: QuerySet, summary_list: list):
+        """
+        Calculate summary
+        :return: List with summaries
+        """
         result = []
         for summary in summary_list:
             field_name = self.get_field_name_from_source(
@@ -38,7 +42,11 @@ class SummaryMixin(DxMixin):
                 result.append(list(summary_qset.values())[0])
         return result
 
-    def add_summary_annotate(self, queryset, summary_list):
+    def add_summary_annotate(self, queryset: QuerySet, summary_list: list):
+        """
+        Add summary to queryset
+        :return: QuerySet
+        """
         summary_param_dict = {}
         for summary in summary_list:
             field_name = self.get_field_name_from_source(

@@ -76,12 +76,26 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
             return Response(result)
 
     def list(self, request, *args, **kwargs):
+        """
+        - list_types: Return the field types
+        DevExtreme-specific query params:
+        - group: Defines the fields by which the data will be grouped. In this case,
+            the parameter includes a selector for the name field, with the properties desc
+            (ascending or descending order) and isExpanded (whether the group is expanded or not).
+        - groupSummary: Configures a group summary to calculate the total, average, or any other
+            operation on a specific field. Here, a summary is defined for the amount field,
+            applying summaryType: sum.
+        - sort: Specifies the order of data based on one or more fields. In this case, the data is
+            sorted by name and then by id.
+        - totalSummary: Defines a global summary that will be applied to all data. In the example,
+            it calculates the sum of the amount field.
+        """
         list_type = self.request.query_params.get("list_types", "False").lower()
         if list_type == "true":
             return self._field_type_list()
 
         queryset = self.filter_queryset(self.get_queryset())
-        group = self.get_param_from_request(request, "group")
+        group = self.get_param_from_request(request, self.GROUP)
         if group:
             return self._grouped_list(group, queryset, request)
         else:
@@ -102,7 +116,7 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
             .order_by(*ordering)
             .distinct()
         )
-        group_summary = self.get_param_from_request(request, "groupSummary")
+        group_summary = self.get_param_from_request(request, self.GROUP_SUMMARY)
         if group_summary:
             if not isinstance(group_summary, list):
                 group_summary = [group_summary]
@@ -123,6 +137,12 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
                 group_field_name = self.get_group_field_name(group)
                 key = row[group_field_name]
 
+                if type(key) is list:
+                    key = key.pop(0)
+
+                # if key == "":  # We unify the empty and null values
+                #     key = None
+
                 if key in lvl_dict:
                     key_dict = lvl_dict[key]
                 else:
@@ -135,7 +155,10 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
                     lvl_dict = key_dict["items"]
                 else:
                     key_dict["items"] = None
-                    key_dict["count"] = row["count"]
+                    if "count" in key_dict:
+                        key_dict["count"] += row["count"]
+                    else:
+                        key_dict["count"] = row["count"]
 
                     summary_pairs = list(
                         filter(lambda x: x[0].startswith("gs__"), row.items())
@@ -158,7 +181,7 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
         else:
             serializer = self.get_serializer(page, many=True)
             res_dict["totalCount"] = self.paginator.count
-        total_summary = self.get_param_from_request(request, "totalSummary")
+        total_summary = self.get_param_from_request(request, self.TOTAL_SUMMARY)
         if total_summary is not None and total_summary:
             if not isinstance(total_summary, list):
                 total_summary = [total_summary]
