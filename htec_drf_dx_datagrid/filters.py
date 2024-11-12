@@ -25,16 +25,20 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
                 return False
         return True
 
-    def _to_django_operator(self, operator: str, value, is_char_field):
+    def _to_django_operator(self, operator: str, value, field):
         if value is None:
             return "__isnull"
         if operator == "notcontains":
-            return "__contains" if self.is_case_sensitive else "__icontains"
+            if not self.is_case_sensitive and isinstance(field, fields.CharField):
+                return "__icontains"
+            return "__contains"
         if operator == "<>":
             return ""
         if operator == "=":
-            if isinstance(value, str) and is_char_field:
+            if isinstance(field, fields.CharField):
                 return "__exact" if self.is_case_sensitive else "__iexact"
+            if isinstance(field, fields.ListField) and value:
+                return "__contains"
             return ""
         if operator == ">":
             return "__gt"
@@ -47,7 +51,7 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
         return "__" + operator if self.is_case_sensitive else "__i" + operator
 
     @staticmethod
-    def _check_value(value):
+    def _check_value(value, field):
         """
         Check value is correct format for queryset
         FYI: In number fields django support filter doesn't matter if it is string
@@ -56,20 +60,16 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
         :return: value to queryset
         """
         if type(value) is str:
-            # Convert value necessary in queryset
-            if value.lower() == "true" or value.lower() == "false":
+            if isinstance(field, fields.BooleanField):
                 return value.lower() == "true"
             try:
+                # Creo que esto ya no haría falta
                 aux_value = ast.literal_eval(value)
                 if type(aux_value) is list:
                     return aux_value
             except (ValueError, SyntaxError):
                 pass
         return value
-
-    def is_char_field(self, field_name):
-        field = self.serializer.fields.get(field_name)
-        return isinstance(field, fields.CharField)
 
     def __node_to_q(self, node: list):
         """
@@ -78,13 +78,16 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
                     [field_name, operator, value]
         :return: Query
         """
-        field_name = self.get_field_name_from_source(self.serializer, node[0])
-        is_char_field = self.is_char_field(node[0])
-        value = self._check_value(node[2])
+        # NOTA: Obtener el tipo y si el tipo es isinstance(self.serializer.fields.get("tipo"), ListField) entonces hacer contains en lugar de =
+        field = self.serializer.fields.get(node[0])
+        field_name = self.get_field_name_from_source(self.serializer, field)
+        value = self._check_value(node[2], field)
         is_negative = node[1] == "<>" or node[1] == "notcontains"
-        operator = self._to_django_operator(node[1], value, is_char_field)
+        operator = self._to_django_operator(node[1], value, field)
         if value is None:  # Because we will use __isnull=True
             value = True
+        if value is "" and isinstance(field, fields.ListField):
+            value = []
         q_expr = Q(**{field_name + operator: value})
 
         return ~q_expr if is_negative else q_expr

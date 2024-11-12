@@ -29,6 +29,9 @@ class SummaryMixin(DxMixin):
         """
         result = []
         for summary in summary_list:
+            if not queryset.exists():
+                result.append(0)
+                continue
             field_name = self.get_field_name_from_source(
                 self.get_serializer(), summary["selector"]
             )

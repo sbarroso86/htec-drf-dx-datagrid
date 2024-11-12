@@ -47,12 +47,14 @@ class DxMixin(object):
             result.append(desc + field_name)
         return result
 
-    def get_field_name_from_source(self, serializer, f_name):
+    def get_field_name_from_source(self, serializer, field):
         """
         Get the field name needed in query from source of serializer
         """
+        if type(field) is str:
+            field = serializer.fields.get(field)
+        f_name = field.field_name
         if serializer:
-            field = serializer.fields.get(f_name)
             if isinstance(field, serializers.SerializerMethodField):  # SBG > Probar
                 source = getattr(field, "_kwargs", {}).get("source", None)
                 if source:

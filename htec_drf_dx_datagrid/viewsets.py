@@ -76,18 +76,10 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
 
     def list(self, request, *args, **kwargs):
         """
-        - list_types: Return the field types
-        DevExtreme-specific query params:
-        - group: Defines the fields by which the data will be grouped. In this case,
-            the parameter includes a selector for the name field, with the properties desc
-            (ascending or descending order) and isExpanded (whether the group is expanded or not).
-        - groupSummary: Configures a group summary to calculate the total, average, or any other
-            operation on a specific field. Here, a summary is defined for the amount field,
-            applying summaryType: sum.
-        - sort: Specifies the order of data based on one or more fields. In this case, the data is
-            sorted by name and then by id.
-        - totalSummary: Defines a global summary that will be applied to all data. In the example,
-            it calculates the sum of the amount field.
+        This method implements all the operations performed by the DevExtreme datagrid,
+        including filtering, grouping, group summaries, and pagination. Additionally,
+        it has an extra feature: if you include list_type=true in the query parameters,
+        the response will be a list of fields and their data types.
         """
         list_type = self.request.query_params.get("list_types", "False").lower()
         if list_type == "true":
@@ -144,37 +136,43 @@ class DxListModelMixin(rest_framework.mixins.ListModelMixin, SummaryMixin):
                 group_field_name = self.get_group_field_name(group)
                 key = row[group_field_name]
 
+                # TMP: Lo tenemos que poner por ahora porque a veces tenemos incongruencias de datos
                 if type(key) is list:
-                    key = key.pop(0)
-
-                # if key == "":  # We unify the empty and null values
-                #     key = None
-
-                if key in lvl_dict:
-                    key_dict = lvl_dict[key]
+                    if not key:
+                        self.create_dict(group, "", lvl_dict, row)
+                    for subkey in key:
+                        self.create_dict(group, subkey, lvl_dict, row)
                 else:
-                    key_dict = {}
-                    lvl_dict[key] = key_dict
-
-                if group["isExpanded"]:
-                    if "items" not in key_dict:
-                        key_dict["items"] = {}
-                    lvl_dict = key_dict["items"]
-                else:
-                    key_dict["items"] = None
-                    if "count" in key_dict:
-                        key_dict["count"] += row["count"]
-                    else:
-                        key_dict["count"] = row["count"]
-
-                    summary_pairs = list(
-                        filter(lambda x: x[0].startswith("gs__"), row.items())
-                    )
-                    if summary_pairs:
-                        summary_pairs.sort(key=lambda x: x[0])
-                        summary = [x[1] for x in summary_pairs]
-                        key_dict["summary"] = summary
+                    self.create_dict(group, key, lvl_dict, row)
         return data_dict
+
+    def create_dict(self, group, key, lvl_dict, row):
+        # PTE: Lo habilitaremos cuando unifiquen None como valor para los valores vacíos
+        # if key == "":  # We unify the empty and null values
+        #     key = None
+
+        if key in lvl_dict:
+            key_dict = lvl_dict[key]
+        else:
+            key_dict = {}
+            lvl_dict[key] = key_dict
+
+        if group["isExpanded"]:
+            if "items" not in key_dict:
+                key_dict["items"] = {}
+            lvl_dict = key_dict["items"]
+        else:
+            key_dict["items"] = None
+            if "count" in key_dict:
+                key_dict["count"] += row["count"]
+            else:
+                key_dict["count"] = row["count"]
+
+            summary_pairs = list(filter(lambda x: x[0].startswith("gs__"), row.items()))
+            if summary_pairs:
+                summary_pairs.sort(key=lambda x: x[0])
+                summary = [x[1] for x in summary_pairs]
+                key_dict["summary"] = summary
 
     def _not_grouped_list(self, queryset, request):
         res_dict = OrderedDict()
