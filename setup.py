@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="htec_drf_dx_datagrid",
-    version="0.5.5",
+    version="0.5.6",
     packages=find_packages(),
     url="https://github.com/sbarroso86/htec-drf-dx-datagrid",
     license="MIT",
