@@ -26,29 +26,53 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
         return True
 
     def _to_django_operator(self, operator: str, value, field):
+        SENSITIVE_CASE_TYPES = (
+            fields.DateField,
+            fields.DateTimeField,
+            fields.CharField,
+            fields.ChoiceField,
+            fields.BooleanField,
+        )
+        operator_map = {
+            "contains": (
+                "__icontains"
+                if not self.is_case_sensitive
+                and isinstance(
+                    field,
+                    SENSITIVE_CASE_TYPES,
+                )
+                else "__contains"
+            ),
+            "=": (
+                "__iexact"
+                if not self.is_case_sensitive and isinstance(field, fields.CharField)
+                else (
+                    "__contains"
+                    if isinstance(field, fields.ListField) and value
+                    else ""
+                )
+            ),
+            "<>": "",
+            ">": "__gt",
+            "<": "__lt",
+            ">=": "__gte",
+            "<=": "__lte",
+        }
         if value is None:
             return "__isnull"
         if operator == "notcontains":
-            if not self.is_case_sensitive and isinstance(field, fields.CharField):
-                return "__icontains"
-            return "__contains"
-        if operator == "<>":
-            return ""
-        if operator == "=":
-            if isinstance(field, fields.CharField):
-                return "__exact" if self.is_case_sensitive else "__iexact"
-            if isinstance(field, fields.ListField) and value:
-                return "__contains"
-            return ""
-        if operator == ">":
-            return "__gt"
-        if operator == "<":
-            return "__lt"
-        if operator == ">=":
-            return "__gte"
-        if operator == "<=":
-            return "__lte"
-        return "__" + operator if self.is_case_sensitive else "__i" + operator
+            operator = "contains"
+        django_operator = operator_map.get(operator, None)
+        return (
+            django_operator
+            if django_operator is not None
+            else (
+                "__i" + operator
+                if not self.is_case_sensitive
+                and isinstance(field, SENSITIVE_CASE_TYPES)
+                else "__" + operator
+            )
+        )
 
     @staticmethod
     def _check_value(value, field):
@@ -86,7 +110,7 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
         operator = self._to_django_operator(node[1], value, field)
         if value is None:  # Because we will use __isnull=True
             value = True
-        if value is "" and isinstance(field, fields.ListField):
+        if value == "" and isinstance(field, fields.ListField):
             value = []
         q_expr = Q(**{field_name + operator: value})
 
