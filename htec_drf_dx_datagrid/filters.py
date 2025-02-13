@@ -34,25 +34,7 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
             fields.BooleanField,
         )
         operator_map = {
-            "contains": (
-                "__icontains"
-                if not self.is_case_sensitive
-                and isinstance(
-                    field,
-                    SENSITIVE_CASE_TYPES,
-                )
-                else "__contains"
-            ),
-            "=": (
-                "__iexact"
-                if not self.is_case_sensitive and isinstance(field, fields.CharField)
-                else (
-                    "__contains"
-                    if isinstance(field, fields.ListField) and value
-                    else ""
-                )
-            ),
-            "<>": "",
+            "=": self.get_equals_operator(field, value),
             ">": "__gt",
             "<": "__lt",
             ">=": "__gte",
@@ -60,8 +42,7 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
         }
         if value is None:
             return "__isnull"
-        if operator == "notcontains":
-            operator = "contains"
+        operator = self.get_positive_operator(operator)
         django_operator = operator_map.get(operator, None)
         return (
             django_operator
@@ -73,6 +54,20 @@ class DxFilterBackend(filters.BaseFilterBackend, DxMixin):
                 else "__" + operator
             )
         )
+
+    def get_equals_operator(self, field, value):
+        if isinstance(field, fields.CharField):
+            return "__iexact" if not self.is_case_sensitive else "__exact"
+        if isinstance(field, fields.ListField):
+            return "__icontains" if not self.is_case_sensitive else "__contains"
+        return ""
+
+    def get_positive_operator(self, operator):
+        if operator == "notcontains":
+            operator = "contains"
+        if operator == "<>":
+            operator = "="
+        return operator
 
     @staticmethod
     def _check_value(value, field):
